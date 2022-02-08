@@ -1,105 +1,92 @@
 package dev.farzadski.setenablelocation;
 
-import android.Manifest;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.location.LocationManager;
-import android.os.Build;
-import android.provider.Settings;
+import android.content.IntentSender;
 
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.gms.common.api.ResolvableApiException;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResponse;
+import com.google.android.gms.location.SettingsClient;
+import com.google.android.gms.tasks.Task;
 
 public class EnableGPS {
     private Context context;
-    private AlertDialog.Builder dialogBuilder;
 
-    private LocationManager locationManager;
+    private LocationRequest locationRequest;
+    private LocationSettingsRequest.Builder builder;
     public static final int PERMISSION_REQUEST_COARSE_LOCATION = 148;
+    private SettingsClient client;
+    private Task<LocationSettingsResponse> task;
 
     public EnableGPS(Context context) {
         this.context = context;
-        dialogBuilder = new AlertDialog.Builder(context);
     }
 
     public void enable() {
-        if (isSDKGreaterThanOrEqualMarshmallow())
-            if (isNotPermissionAccessCoarseLocationGrantedOnGreaterThanOrEqualMarshmallow())
-                onGreaterThanOrEqualMarshmellowLocationRequested();
-            else {
-                setLocationManager();
-                if (isNotPermissionAccessCoarseLocationGrantedOnLessThanMarshmallow())
-                    onLessThanMarshmellowLocationRequested();
+        setLocationRequest();
+        buildLocationSettingsRequest();
+        setSettingsClient();
+        setTaskForCheckLocationSettings();
+        onTaskForCheckLocationSettingsListener();
+    }
+
+    private void onTaskForCheckLocationSettingsListener() {
+        onTaskSuccessListener();
+        onTaskFailureListener();
+    }
+
+    private void onTaskFailureListener() {
+        task.addOnFailureListener(((AppCompatActivity) context), e -> {
+            if (e instanceof ResolvableApiException) {
+                // Location settings are not satisfied, but this can be fixed
+                // by showing the user a dialog.
+                try {
+                    // Show the dialog by calling startResolutionForResult(),
+                    // and check the result in onActivityResult().
+                    startResolutionForResult((ResolvableApiException) e);
+                } catch (IntentSender.SendIntentException sendEx) {
+                    // Ignore the error.
+                }
             }
-    }
-
-    private boolean isNotPermissionAccessCoarseLocationGrantedOnLessThanMarshmallow() {
-        return !isGpsProviderEnabled() && !isNetworkProviderEnabled();
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private void onGreaterThanOrEqualMarshmellowLocationRequested() {
-        setTitleAndMessageOfOurDialog();
-        onPositiveButtonActionForSDKGreaterThanOrEqualMarshmallow();
-        showOurDialog();
-    }
-
-    private void onPositiveButtonActionForSDKLessThanMarshmallow() {
-        dialogBuilder.setPositiveButton(android.R.string.yes, (dialogInterface, i) -> {
-            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-            context.startActivity(intent);
         });
     }
 
-    private void onLessThanMarshmellowLocationRequested() {
-        setTitleAndMessageOfOurDialog();
-        onPositiveButtonActionForSDKLessThanMarshmallow();
-        showOurDialog();
+    private void startResolutionForResult(ResolvableApiException e) throws IntentSender.SendIntentException {
+        ResolvableApiException resolvable = e;
+        resolvable.startResolutionForResult(((AppCompatActivity) context),
+                PERMISSION_REQUEST_COARSE_LOCATION);
     }
 
-
-    private boolean isNetworkProviderEnabled() {
-        return locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+    private void onTaskSuccessListener() {
+        task.addOnSuccessListener(((AppCompatActivity) context), locationSettingsResponse -> {
+            // All location settings are satisfied. The client can initialize
+            // location requests here.
+            // ...
+        });
     }
 
-
-    private boolean isGpsProviderEnabled() {
-        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+    private void setTaskForCheckLocationSettings() {
+        task = client.checkLocationSettings(builder.build());
     }
 
-    private void setLocationManager() {
-        locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+    private void setSettingsClient() {
+        client = LocationServices.getSettingsClient(context);
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private void onPositiveButtonActionForSDKGreaterThanOrEqualMarshmallow() {
-        dialogBuilder
-                .setPositiveButton(android.R.string.yes, (dialogInterface, i) ->
-                        ((AppCompatActivity) context)
-                                .requestPermissions(
-                                        new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
-                                        PERMISSION_REQUEST_COARSE_LOCATION));
+    private void buildLocationSettingsRequest() {
+        builder = new LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest);
     }
 
-    private void showOurDialog() {
-        dialogBuilder.setNegativeButton(android.R.string.no, null);
-        dialogBuilder.show();
-    }
-
-    private void setTitleAndMessageOfOurDialog() {
-        dialogBuilder.setTitle("Location Permission");
-        dialogBuilder.setMessage("The app needs location permissions. Please grant this permission to continue using the features of the app.");
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private boolean isNotPermissionAccessCoarseLocationGrantedOnGreaterThanOrEqualMarshmallow() {
-        return context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED;
-    }
-
-    private boolean isSDKGreaterThanOrEqualMarshmallow() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
+    private void setLocationRequest() {
+        locationRequest = LocationRequest.create();
+        locationRequest.setInterval(10000);
+        locationRequest.setFastestInterval(5000);
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
     }
 
 
